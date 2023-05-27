@@ -1,60 +1,35 @@
-use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::hash::{BuildHasher, Hash};
+use std::hash::Hash;
 
-#[derive(Default, Debug, Eq)]
-struct Node<E, S = RandomState>
+#[derive(Default, Debug, PartialEq, Eq)]
+struct Node<E>
 where
     E: Copy + Default + Eq + Hash + Debug,
-    S: BuildHasher,
 {
     start: usize,
     end: usize,
-    children: HashMap<E, Node<E, S>, S>,
+    children: HashMap<E, Node<E>>,
     terminators: Vec<usize>,
 }
 
-impl<E, S> PartialEq for Node<E, S>
+impl<E> Node<E>
 where
     E: Copy + Default + Eq + Hash + Debug,
-    S: BuildHasher,
 {
-    fn eq(&self, other: &Self) -> bool {
-        self.start == other.start
-            && self.end == other.end
-            && self.children == other.children
-            && self.terminators == other.terminators
-    }
-}
-
-impl<E, S> Node<E, S>
-where
-    E: Copy + Default + Eq + Hash + Debug,
-    S: BuildHasher,
-{
-    fn with_hasher(start: usize, end: usize, hasher: S) -> Self {
+    fn new(start: usize, end: usize) -> Self {
         Self {
             start,
             end,
-            children: HashMap::with_hasher(hasher),
-            terminators: Vec::new(),
+            ..Default::default()
         }
     }
-    fn default_with_hasher(hasher: S) -> Self {
-        Self {
-            start: 0,
-            end: 0,
-            children: HashMap::with_hasher(hasher),
-            terminators: Vec::new(),
-        }
-    }
-    fn terminal_with_hasher(start: usize, end: usize, terminator: usize, hasher: S) -> Self {
+    fn terminal(start: usize, end: usize, terminator: usize) -> Self {
         Self {
             start,
             end,
-            children: HashMap::with_hasher(hasher),
             terminators: vec![terminator],
+            ..Default::default()
         }
     }
     fn len(&self) -> usize {
@@ -65,37 +40,24 @@ where
     }
 }
 
-#[derive(Debug, Eq)]
-pub struct SuffixTree<E, S = RandomState>
+#[derive(Debug, PartialEq, Eq)]
+pub struct SuffixTree<E>
 where
     E: Copy + Default + Eq + Hash + Debug,
-    S: BuildHasher,
 {
     data: Vec<E>,
-    root: Node<E, S>,
+    root: Node<E>,
 }
 
-impl<E, S> PartialEq for SuffixTree<E, S>
+impl<E> SuffixTree<E>
 where
     E: Copy + Default + Eq + Hash + Debug,
-    S: BuildHasher,
 {
-    fn eq(&self, other: &Self) -> bool {
-        self.data == other.data && self.root == other.root
+    pub fn new(data: Vec<E>) -> Self {
+        Self::build_naive(data)
     }
-}
-
-impl<E, S> SuffixTree<E, S>
-where
-    E: Copy + Default + Eq + Hash + Debug,
-    S: BuildHasher + Clone,
-{
-    pub fn with_hasher(data: Vec<E>, hasher: S) -> Self {
-        Self::build_naive(data, hasher)
-    }
-
-    fn build_naive(data: Vec<E>, hasher: S) -> Self {
-        let mut root = Node::default_with_hasher(hasher.clone());
+    fn build_naive(data: Vec<E>) -> Self {
+        let mut root = Node::default();
         if data.is_empty() {
             return Self { data, root };
         }
@@ -114,11 +76,9 @@ where
                                 // mismatch, fork the edge at k and create a new branch
 
                                 let orig = child.get(&data, k);
-                                let mut mid =
-                                    Node::with_hasher(child.start, child.start + k, hasher.clone());
+                                let mut mid = Node::new(child.start, child.start + k);
 
-                                let new_branch =
-                                    Node::terminal_with_hasher(j + k, n, 0, hasher.clone());
+                                let new_branch = Node::terminal(j + k, n, 0);
                                 mid.children.insert(elem, new_branch);
 
                                 let mut child = curr.children.remove(&data[j]).unwrap();
@@ -132,12 +92,7 @@ where
                             // end of the data, fork the edge at k but don't create a new branch
 
                             let orig = child.get(&data, k);
-                            let mut mid = Node::terminal_with_hasher(
-                                child.start,
-                                child.start + k,
-                                0,
-                                hasher.clone(),
-                            );
+                            let mut mid = Node::terminal(child.start, child.start + k, 0);
 
                             let mut child = curr.children.remove(&data[j]).unwrap();
                             child.start += k;
@@ -152,7 +107,7 @@ where
                     j += curr.len();
                 } else {
                     // no matches for prefix, insert a new edge
-                    let new_node = Node::terminal_with_hasher(j, n, 0, hasher.clone());
+                    let new_node = Node::terminal(j, n, 0);
                     curr.children.insert(data[j], new_node);
                 }
             }
@@ -161,23 +116,12 @@ where
     }
 }
 
-impl<E> SuffixTree<E, RandomState>
+impl<E> std::fmt::Display for SuffixTree<E>
 where
     E: Copy + Default + Eq + Hash + Debug,
-{
-    pub fn new(data: Vec<E>) -> Self {
-        Self::build_naive(data, RandomState::new())
-    }
-}
-
-impl<E, S> std::fmt::Display for SuffixTree<E, S>
-where
-    E: Copy + Default + Eq + Hash + Debug,
-    S: BuildHasher,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut stack: Vec<(&Node<E, S>, String, bool)> =
-            Vec::with_capacity(self.root.children.len());
+        let mut stack: Vec<(&Node<E>, String, bool)> = Vec::with_capacity(self.root.children.len());
         for (idx, child) in self.root.children.values().enumerate() {
             stack.push((child, "".into(), idx == self.root.children.len() - 1));
             while let Some((curr, mut prefix, is_last)) = stack.pop() {
@@ -206,34 +150,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::hash_map::DefaultHasher;
 
     use super::*;
-
-    impl<E> Node<E, RandomState>
-    where
-        E: Copy + Default + Eq + Hash + Debug,
-    {
-        fn terminal(start: usize, end: usize, terminator: usize) -> Self {
-            Self {
-                start,
-                end,
-                terminators: vec![terminator],
-                ..Default::default()
-            }
-        }
-    }
-
-    #[derive(Clone)]
-    struct DeterministicHasher;
-
-    impl BuildHasher for DeterministicHasher {
-        type Hasher = DefaultHasher;
-
-        fn build_hasher(&self) -> Self::Hasher {
-            DefaultHasher::default()
-        }
-    }
 
     #[test]
     fn test_aabccb_unique() {
@@ -285,16 +203,6 @@ mod tests {
         };
         let result = SuffixTree::new(str.to_owned().chars().collect());
         assert_eq!(expected, result);
-    }
-
-    #[test]
-    fn test_display() {
-        let expected = include_str!("../resources/out.txt").to_owned();
-        let result = format!(
-            "{}",
-            SuffixTree::with_hasher("aabccb$".to_owned().chars().collect(), DeterministicHasher)
-        );
-        assert_eq!(result, expected);
     }
 
     #[test]

@@ -26,15 +26,6 @@ where
             ..Default::default()
         }
     }
-    fn terminal(index: usize, start: usize, end: usize, terminator: usize) -> Self {
-        Self {
-            index,
-            start,
-            end,
-            terminators: vec![terminator],
-            ..Default::default()
-        }
-    }
     fn len(&self) -> usize {
         self.end - self.start
     }
@@ -114,7 +105,7 @@ where
                                 let orig = child.get(&self.data, k);
                                 let mut mid = Node::new(child.index, child.start, child.start + k);
 
-                                let new_branch = Node::terminal(t, j + k, n, t);
+                                let new_branch = Node::new(t, j + k, n);
                                 mid.children.insert(elem, new_branch);
 
                                 let mut child = curr.children.remove(&self.data[t][j]).unwrap();
@@ -128,8 +119,7 @@ where
                             // end of the data, fork the edge at k but don't create a new branch
 
                             let orig = child.get(&self.data, k);
-                            let mut mid =
-                                Node::terminal(child.index, child.start, child.start + k, t);
+                            let mut mid = Node::new(child.index, child.start, child.start + k);
 
                             let mut child = curr.children.remove(&self.data[t][j]).unwrap();
                             child.start += k;
@@ -144,10 +134,11 @@ where
                     j += curr.len();
                 } else {
                     // no matches for prefix, insert a new edge
-                    let new_node = Node::terminal(t, j, n, t);
+                    let new_node = Node::new(t, j, n);
                     curr.children.insert(self.data[t][j], new_node);
                 }
             }
+            curr.terminators.push(t);
         }
     }
 }
@@ -193,6 +184,21 @@ mod tests {
 
     use super::*;
 
+    impl<E> Node<E>
+    where
+        E: Copy + Default + Eq + Hash + Debug,
+    {
+        fn terminal(index: usize, start: usize, end: usize) -> Self {
+            Self {
+                index,
+                start,
+                end,
+                terminators: vec![index],
+                ..Default::default()
+            }
+        }
+    }
+
     #[test]
     fn test_aabccb_unique() {
         let str = "aabccb$";
@@ -200,15 +206,15 @@ mod tests {
             data: vec![str.to_owned().chars().collect()],
             root: Node {
                 children: HashMap::from([
-                    ('$', Node::terminal(0, 6, 7, 0)),
+                    ('$', Node::terminal(0, 6, 7)),
                     (
                         'a',
                         Node {
                             start: 0,
                             end: 1,
                             children: HashMap::from([
-                                ('a', Node::terminal(0, 1, 7, 0)), // abccb$
-                                ('b', Node::terminal(0, 2, 7, 0)), // bccb$
+                                ('a', Node::terminal(0, 1, 7)), // abccb$
+                                ('b', Node::terminal(0, 2, 7)), // bccb$
                             ]),
                             ..Default::default()
                         },
@@ -219,8 +225,8 @@ mod tests {
                             start: 2,
                             end: 3,
                             children: HashMap::from([
-                                ('$', Node::terminal(0, 6, 7, 0)), // $
-                                ('c', Node::terminal(0, 3, 7, 0)), // ccb$
+                                ('$', Node::terminal(0, 6, 7)), // $
+                                ('c', Node::terminal(0, 3, 7)), // ccb$
                             ]),
                             ..Default::default()
                         },
@@ -231,8 +237,8 @@ mod tests {
                             start: 3,
                             end: 4,
                             children: HashMap::from([
-                                ('b', Node::terminal(0, 5, 7, 0)), // b$
-                                ('c', Node::terminal(0, 4, 7, 0)), // cb$
+                                ('b', Node::terminal(0, 5, 7)), // b$
+                                ('c', Node::terminal(0, 4, 7)), // cb$
                             ]),
                             ..Default::default()
                         },
@@ -258,8 +264,8 @@ mod tests {
                             start: 0,
                             end: 1,
                             children: HashMap::from([
-                                ('a', Node::terminal(0, 1, 6, 0)), // abccb
-                                ('b', Node::terminal(0, 2, 6, 0)), // bccb
+                                ('a', Node::terminal(0, 1, 6)), // abccb
+                                ('b', Node::terminal(0, 2, 6)), // bccb
                             ]),
                             ..Default::default()
                         },
@@ -270,7 +276,7 @@ mod tests {
                             start: 2,
                             end: 3,
                             children: HashMap::from([
-                                ('c', Node::terminal(0, 3, 6, 0)), // ccb
+                                ('c', Node::terminal(0, 3, 6)), // ccb
                             ]),
                             terminators: vec![0],
                             ..Default::default()
@@ -282,8 +288,8 @@ mod tests {
                             start: 3,
                             end: 4,
                             children: HashMap::from([
-                                ('b', Node::terminal(0, 5, 6, 0)), // b
-                                ('c', Node::terminal(0, 4, 6, 0)), // cb
+                                ('b', Node::terminal(0, 5, 6)), // b
+                                ('c', Node::terminal(0, 4, 6)), // cb
                             ]),
                             ..Default::default()
                         },
@@ -322,13 +328,7 @@ mod tests {
                                             end: 3,
                                             children: HashMap::from([(
                                                 'B',
-                                                Node {
-                                                    index: 0,
-                                                    start: 3,
-                                                    end: 4,
-                                                    terminators: vec![0],
-                                                    ..Default::default()
-                                                },
+                                                Node::terminal(0, 3, 4),
                                             )]),
                                             terminators: vec![1],
                                         },
@@ -359,13 +359,7 @@ mod tests {
                                             end: 4,
                                             children: HashMap::from([(
                                                 'A',
-                                                Node {
-                                                    index: 1,
-                                                    start: 3,
-                                                    end: 4,
-                                                    terminators: vec![1],
-                                                    ..Default::default()
-                                                },
+                                                Node::terminal(1, 3, 4),
                                             )]),
                                             terminators: vec![0],
                                         },
@@ -381,6 +375,41 @@ mod tests {
             },
         };
         let result = SuffixTree::from(["ABAB".to_owned().chars(), "BABA".to_owned().chars()]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_multiple_coincidence() {
+        let expected = SuffixTree {
+            data: vec![vec!['A', 'A', 'A'], vec!['A', 'A'], vec!['A']],
+            root: Node {
+                children: HashMap::from([(
+                    'A',
+                    Node {
+                        index: 0,
+                        start: 0,
+                        end: 1,
+                        children: HashMap::from([(
+                            'A',
+                            Node {
+                                index: 0,
+                                start: 1,
+                                end: 2,
+                                children: HashMap::from([('A', Node::terminal(0, 2, 3))]),
+                                terminators: vec![0, 1],
+                            },
+                        )]),
+                        terminators: vec![0, 1, 2],
+                    },
+                )]),
+                ..Default::default()
+            },
+        };
+        let result = SuffixTree::from([
+            "AAA".to_owned().chars(),
+            "AA".to_owned().chars(),
+            "A".to_owned().chars(),
+        ]);
         assert_eq!(expected, result);
     }
 }

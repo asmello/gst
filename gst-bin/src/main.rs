@@ -8,8 +8,8 @@ fn main() -> Result<()> {
         bail!("Must provide exactly 1 argument (filename)");
     }
     for input in inputs {
-        let data = std::fs::read_to_string(input)?.chars().collect();
-        let st = SuffixTree::new(data);
+        let data: Vec<_> = std::fs::read_to_string(input)?.chars().collect();
+        let st = SuffixTree::from([data]);
         println!("{st}");
     }
     Ok(())

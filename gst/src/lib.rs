@@ -140,6 +140,11 @@ where
                         break; // extension finished
                     }
                 }
+                // If we get here, this is also rule 3 - do nothing.
+                // This can happen if the child we were exploring at k == i was an internal node of length exactly 1.
+                // In that case we don't enter the u-loop, so we don't reach the normal exit point for rule 3. Instead,
+                // we descend into the child, but since we always advance k by the child's length, the while loop stops
+                // naturally.
             }
         }
     }

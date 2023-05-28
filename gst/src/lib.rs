@@ -412,4 +412,39 @@ mod tests {
         ]);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn test_multiple_coincidence_rev() {
+        let expected = SuffixTree {
+            data: vec![vec!['A'], vec!['A', 'A'], vec!['A', 'A', 'A']],
+            root: Node {
+                children: HashMap::from([(
+                    'A',
+                    Node {
+                        index: 0,
+                        start: 0,
+                        end: 1,
+                        children: HashMap::from([(
+                            'A',
+                            Node {
+                                index: 1,
+                                start: 1,
+                                end: 2,
+                                children: HashMap::from([('A', Node::terminal(2, 2, 3))]),
+                                terminators: vec![1, 2],
+                            },
+                        )]),
+                        terminators: vec![0, 1, 2],
+                    },
+                )]),
+                ..Default::default()
+            },
+        };
+        let result = SuffixTree::from([
+            "A".to_owned().chars(),
+            "AA".to_owned().chars(),
+            "AAA".to_owned().chars(),
+        ]);
+        assert_eq!(expected, result);
+    }
 }

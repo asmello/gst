@@ -10,7 +10,8 @@ where
     index: usize,
     start: usize,
     end: usize,
-    children: HashMap<E, Node<E>>,
+    link: usize,
+    children: HashMap<E, usize>,
     terminators: Vec<usize>,
 }
 
@@ -26,15 +27,6 @@ where
             ..Default::default()
         }
     }
-    fn len(&self) -> usize {
-        self.end - self.start
-    }
-    fn get<I>(&self, data: &[I], idx: usize) -> E
-    where
-        I: AsRef<[E]>,
-    {
-        data[self.index].as_ref()[self.start + idx]
-    }
     fn is_leaf(&self) -> bool {
         self.children.is_empty()
     }
@@ -46,7 +38,7 @@ where
     E: Copy + Default + Eq + Hash + Debug,
 {
     data: Vec<Vec<E>>,
-    root: Node<E>,
+    nodes: Vec<Node<E>>,
 }
 
 impl<E, I, const N: usize> From<[I; N]> for SuffixTree<E>
@@ -81,7 +73,10 @@ where
     E: Copy + Default + Eq + Hash + Debug,
 {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            data: Vec::new(),
+            nodes: vec![Node::new(0, 0, 0)],
+        }
     }
 
     pub fn add(&mut self, data: Vec<E>) {
@@ -91,52 +86,63 @@ where
     fn add_ukkonen(&mut self, data: Vec<E>) {
         let n = data.len();
         self.data.push(data);
+
+        // let mut active_node = &mut self.root;
+        // let mut active_edge: Option<E> = None;
+        // let mut active_length = 0;
+        // let mut remainder = 0;
+
         // for each prefix S[0..i] = P
         for i in 0..n {
             // for each suffix S[j..i] of P
             for j in 0..=i {
-                let mut curr = &mut self.root; // find path S[j..i] in tree
+                let mut curr = 0; // find path S[j..i] in tree
                 let mut k = j;
                 'outer: while k <= i {
-                    if let Some(child) = curr.children.get(&self.data[0][k]) {
+                    if let Some(&child) = self.nodes[curr].children.get(&self.data[0][k]) {
+                        let child_node = &self.nodes[child];
                         // we have an edge starting with S[k], traverse it
-                        let m = child.len();
+                        // edge case: child.end == n used for leaf nodes, but we should compute length from current end
+                        let m = (child_node.end - child_node.start).min(i + 1 - child_node.start);
                         for u in 1..m {
                             if k + u > i {
                                 // reached end of suffix S[j..=i], apply rule 3 - do nothing
                                 break 'outer; // extension finished
                             }
-                            if self.data[0][k + u] != child.get(&self.data, u) {
+                            let child_value = self.data[child_node.index][child_node.start + u];
+                            if self.data[0][k + u] != child_value {
                                 // S[k + u] is not in path, apply rule 2b - create new branch
+                                let mid = self.nodes.len();
+                                self.nodes.push(Node::new(
+                                    child_node.index,
+                                    child_node.start,
+                                    child_node.start + u,
+                                ));
 
-                                let orig = child.get(&self.data, u);
-                                let mut mid = Node::new(child.index, child.start, child.start + u);
+                                let new = self.nodes.len();
+                                self.nodes.push(Node::new(0, k + u, n));
+                                self.nodes[mid].children.insert(self.data[0][k + u], new);
 
-                                let new_branch = Node::new(0, k + u, i + 1);
-                                mid.children.insert(self.data[0][k + u], new_branch);
-
-                                let mut child = curr.children.remove(&self.data[0][k]).unwrap();
-                                child.start += u;
-                                mid.children.insert(orig, child);
-                                curr.children.insert(self.data[0][k], mid);
-
+                                self.nodes[child].start += u;
+                                self.nodes[mid].children.insert(child_value, child);
+                                self.nodes[curr].children.insert(self.data[0][k], mid);
                                 break 'outer; // extension finished
                             }
                         }
                         // reached the end of edge, all elements match
-                        if child.is_leaf() {
-                            // apply extension rule 1 - extend edge with S[i]
-                            curr.children.get_mut(&self.data[0][k]).unwrap().end += 1;
+                        if child_node.is_leaf() {
+                            // apply extension rule 1 - extend edge with S[i] - done implicitly
                             break; // extension finished
                         } else {
                             // continue down the child at edge's end
-                            curr = curr.children.get_mut(&self.data[0][k]).unwrap();
+                            curr = *self.nodes[curr].children.get(&self.data[0][k]).unwrap();
                             k += m;
                         }
                     } else {
                         // extension rule 2a - create new edge for S[k..=i]
-                        curr.children
-                            .insert(self.data[0][k], Node::new(0, k, i + 1));
+                        let new = self.nodes.len();
+                        self.nodes.push(Node::new(0, k, n));
+                        self.nodes[curr].children.insert(self.data[0][k], new);
                         break; // extension finished
                     }
                 }
@@ -155,28 +161,30 @@ where
     E: Copy + Default + Eq + Hash + Debug,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut stack: Vec<(&Node<E>, String, bool)> = Vec::with_capacity(self.root.children.len());
-        for (idx, child) in self.root.children.values().enumerate() {
-            stack.push((child, "".into(), idx == self.root.children.len() - 1));
+        let mut stack: Vec<(usize, String, bool)> =
+            Vec::with_capacity(self.nodes[0].children.len());
+        for (idx, &child) in self.nodes[0].children.values().enumerate() {
+            stack.push((child, "".into(), idx == self.nodes[0].children.len() - 1));
             while let Some((curr, mut prefix, is_last)) = stack.pop() {
                 let to_add = if is_last { "└──" } else { "├──" };
                 let curr_prefix: String = prefix.chars().chain(to_add.chars()).collect();
+                let curr_node = &self.nodes[curr];
                 write!(
                     fmt,
                     "{curr_prefix}{:?}",
-                    &self.data[curr.index][curr.start..curr.end],
+                    &self.data[curr_node.index][curr_node.start..curr_node.end],
                 )?;
-                if !curr.terminators.is_empty() {
-                    write!(fmt, " - {:?}", curr.terminators)?;
+                if !curr_node.terminators.is_empty() {
+                    write!(fmt, " - {:?}", curr_node.terminators)?;
                 }
                 write!(fmt, "\n")?;
-                if !curr.children.is_empty() {
+                if !curr_node.children.is_empty() {
                     if is_last {
                         prefix.push_str("   ");
                     } else {
                         prefix.push_str("│  ");
                     }
-                    for (idx, child) in curr.children.values().enumerate() {
+                    for (idx, &child) in curr_node.children.values().enumerate() {
                         stack.push((child, prefix.clone(), idx == 0));
                     }
                 }
@@ -208,9 +216,9 @@ mod tests {
 
     #[test]
     fn test() {
-        let str = "axabx";
+        let str = "aabccb";
         let result = SuffixTree::from([str.to_owned().chars()]);
-        println!("{result:#?}");
+        println!("{result}");
     }
 
     // #[test]

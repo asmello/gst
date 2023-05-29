@@ -2,19 +2,20 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
+const NULL: usize = 0;
 const ROOT: usize = 1;
 
 #[derive(Default, Debug, PartialEq, Eq)]
 struct Node {
-    index: usize,
+    source: usize,
     start: usize,
     end: usize,
 }
 
 impl Node {
-    fn new(index: usize, start: usize, end: usize) -> Self {
+    fn new(source: usize, start: usize, end: usize) -> Self {
         Self {
-            index,
+            source,
             start,
             end,
             ..Default::default()
@@ -31,7 +32,7 @@ where
     nodes: Vec<Node>,
     edges: HashMap<usize, HashMap<E, usize>>,
     links: HashMap<usize, usize>,
-    terminators: HashMap<usize, usize>,
+    terminators: HashMap<usize, Vec<usize>>,
 }
 
 impl<E, I, const N: usize> From<[I; N]> for SuffixTree<E>
@@ -77,8 +78,8 @@ where
         self.add_ukkonen(data);
     }
 
-    fn new_node(&mut self, index: usize, start: usize, end: usize) -> usize {
-        self.nodes.push(Node::new(index, start, end));
+    fn new_node(&mut self, source: usize, start: usize, end: usize) -> usize {
+        self.nodes.push(Node::new(source, start, end));
         self.nodes.len()
     }
 
@@ -116,28 +117,71 @@ where
         self.links[&node]
     }
 
-    fn get(&self, index: usize, pos: usize) -> E {
-        self.data[index][pos - 1]
+    fn get(&self, source: usize, pos: usize) -> E {
+        self.data[source][pos - 1]
     }
 
-    fn end(&self, index: usize) -> usize {
-        self.data[index].len()
+    fn end(&self, source: usize) -> usize {
+        self.data[source].len()
     }
 
     fn add_link(&mut self, src: usize, dst: usize) {
         self.links.insert(src, dst);
     }
 
+    fn add_terminator(&mut self, node: usize, source: usize) {
+        self.terminators.entry(node).or_default().push(source);
+    }
+
     fn add_ukkonen(&mut self, data: Vec<E>) {
         // let z = self.data.len();
-        let n = data.len();
         self.data.push(data);
 
         let mut node = ROOT;
         let mut start = 1;
-        for i in 1..=n {
+        for i in 1..=self.end(0) {
             (node, start) = self.update(node, start, i);
             (node, start) = self.canonize(node, start, i);
+        }
+
+        self.finalize(node, start);
+    }
+
+    fn finalize(&mut self, mut node: usize, mut start: usize) {
+        let (mut endpoint, mut curr) = self.split_last(node, start);
+        let mut prev = ROOT;
+        while !endpoint {
+            self.add_terminator(curr, 0);
+            if prev != ROOT {
+                self.add_link(prev, curr);
+            }
+            prev = curr;
+            (node, start) = self.canonize(self.link(node), start, self.end(0));
+            (endpoint, curr) = self.split_last(node, start);
+        }
+    }
+
+    fn split_last(&mut self, node: usize, start: usize) -> (bool, usize) {
+        let end = self.end(0);
+        if start <= end {
+            let t_start = self.get(0, start);
+            let child = self.edge(node, t_start);
+            let t_mid = self.get(0, 1 + self.node(child).start + end - start);
+            let mid = self.new_node(
+                0,
+                self.node(child).start,
+                self.node(child).start + end - start,
+            );
+            self.node_mut(child).start += end - start + 1;
+            self.add_edge(mid, t_mid, child);
+            self.add_edge(node, t_start, mid);
+            (false, mid)
+        } else {
+            if node == NULL {
+                (true, node)
+            } else {
+                (false, node)
+            }
         }
     }
 
@@ -148,6 +192,7 @@ where
         while !endpoint {
             let new = self.new_node(0, i, self.end(0));
             self.add_edge(curr, t_i, new);
+            self.add_terminator(new, 0);
             if prev != ROOT {
                 self.add_link(prev, curr);
             }
@@ -224,11 +269,11 @@ where
                 write!(
                     fmt,
                     "{curr_prefix} {curr} {:?}",
-                    &self.data[self.node(curr).index]
+                    &self.data[self.node(curr).source]
                         [self.node(curr).start - 1..self.node(curr).end],
                 )?;
                 if self.terminators.contains_key(&curr) {
-                    write!(fmt, "~{:?}", self.terminators[&curr])?;
+                    write!(fmt, "--{:?}", self.terminators[&curr])?;
                 }
                 if self.links.contains_key(&curr) {
                     write!(fmt, " ➔ {}", self.links[&curr])?;
@@ -257,7 +302,7 @@ mod tests {
 
     // #[test]
     // fn test() {
-    //     let str = "cacao";
+    //     let str = "caca";
     //     let result = SuffixTree::from([str.to_owned().chars()]);
     //     println!("{result}\n{result:#?}");
     // }
@@ -269,133 +314,155 @@ mod tests {
             data: vec![vec!['a', 'a', 'b', 'c', 'c', 'b', '$']],
             nodes: vec![
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 0,
                     end: 0,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 2,
                     end: 7,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 1,
                     end: 1,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 3,
                     end: 7,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 4,
                     end: 7,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 5,
                     end: 7,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 4,
                     end: 4,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 6,
                     end: 7,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 3,
                     end: 3,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 7,
                     end: 7,
                 },
                 Node {
-                    index: 0,
+                    source: 0,
                     start: 7,
                     end: 7,
                 },
             ],
             edges: HashMap::from([
-                (3, HashMap::from([('b', 4), ('a', 2)])),
+                (1, HashMap::from([('a', 3), ('b', 9), ('c', 7), ('$', 11)])),
+                (3, HashMap::from([('a', 2), ('b', 4)])),
                 (7, HashMap::from([('b', 8), ('c', 6)])),
-                (1, HashMap::from([('a', 3), ('b', 9), ('$', 11), ('c', 7)])),
-                (9, HashMap::from([('$', 10), ('c', 5)])),
+                (9, HashMap::from([('c', 5), ('$', 10)])),
             ]),
-            links: HashMap::from([(3, 1), (9, 1), (1, 0), (7, 1)]),
-            ..Default::default()
+            links: HashMap::from([(1, 0), (3, 1), (7, 1), (9, 1)]),
+            terminators: HashMap::from([
+                (1, vec![0]),
+                (2, vec![0]),
+                (4, vec![0]),
+                (5, vec![0]),
+                (6, vec![0]),
+                (8, vec![0]),
+                (10, vec![0]),
+                (11, vec![0]),
+            ]),
         };
         let result = SuffixTree::from([str.to_owned().chars()]);
         assert_eq!(expected, result);
     }
 
-    // #[test]
-    // fn test_aabccb() {
-    //     let str = "aabccb";
-    //     let expected = SuffixTree {
-    //         data: vec![vec!['a', 'a', 'b', 'c', 'c', 'b']],
-    //         nodes: vec![
-    //             Node {
-    //                 index: 0,
-    //                 start: 0,
-    //                 end: 0,
-    //             },
-    //             Node {
-    //                 index: 0,
-    //                 start: 2,
-    //                 end: 6,
-    //             },
-    //             Node {
-    //                 index: 0,
-    //                 start: 1,
-    //                 end: 1,
-    //             },
-    //             Node {
-    //                 index: 0,
-    //                 start: 3,
-    //                 end: 6,
-    //             },
-    //             Node {
-    //                 index: 0,
-    //                 start: 3,
-    //                 end: 6,
-    //             },
-    //             Node {
-    //                 index: 0,
-    //                 start: 5,
-    //                 end: 6,
-    //             },
-    //             Node {
-    //                 index: 0,
-    //                 start: 4,
-    //                 end: 4,
-    //             },
-    //             Node {
-    //                 index: 0,
-    //                 start: 6,
-    //                 end: 6,
-    //             },
-    //         ],
-    //         edges: HashMap::from([
-    //             (3, HashMap::from([('b', 4), ('a', 2)])),
-    //             (7, HashMap::from([('b', 8), ('c', 6)])),
-    //             (1, HashMap::from([('a', 3), ('b', 5), ('c', 7)])),
-    //         ]),
-    //         links: HashMap::from([(3, 1), (1, 0), (7, 1)]),
-    //         ..Default::default()
-    //     };
-    //     let result = SuffixTree::from([str.to_owned().chars()]);
-    //     println!("{result}");
-    //     assert_eq!(expected, result);
-    // }
+    #[test]
+    fn test_aabccb() {
+        let str = "aabccb";
+        let expected = SuffixTree {
+            data: vec![vec!['a', 'a', 'b', 'c', 'c', 'b']],
+            nodes: vec![
+                Node {
+                    source: 0,
+                    start: 0,
+                    end: 0,
+                },
+                Node {
+                    source: 0,
+                    start: 2,
+                    end: 6,
+                },
+                Node {
+                    source: 0,
+                    start: 1,
+                    end: 1,
+                },
+                Node {
+                    source: 0,
+                    start: 3,
+                    end: 6,
+                },
+                Node {
+                    source: 0,
+                    start: 4,
+                    end: 6,
+                },
+                Node {
+                    source: 0,
+                    start: 5,
+                    end: 6,
+                },
+                Node {
+                    source: 0,
+                    start: 4,
+                    end: 4,
+                },
+                Node {
+                    source: 0,
+                    start: 6,
+                    end: 6,
+                },
+                Node {
+                    source: 0,
+                    start: 3,
+                    end: 3,
+                },
+            ],
+            edges: HashMap::from([
+                (1, HashMap::from([('a', 3), ('b', 9), ('c', 7)])),
+                (3, HashMap::from([('a', 2), ('b', 4)])),
+                (7, HashMap::from([('c', 6), ('b', 8)])),
+                (9, HashMap::from([('c', 5)])),
+            ]),
+            links: HashMap::from([(1, 0), (3, 1), (7, 1), (9, 1)]),
+            terminators: HashMap::from([
+                (1, vec![0]),
+                (2, vec![0]),
+                (4, vec![0]),
+                (5, vec![0]),
+                (6, vec![0]),
+                (8, vec![0]),
+                (9, vec![0]),
+            ]),
+        };
+        let result = SuffixTree::from([str.to_owned().chars()]);
+        assert_eq!(expected, result);
+    }
 
     // #[test]
     // fn test_multiple() {
@@ -406,19 +473,19 @@ mod tests {
     //                 (
     //                     'A',
     //                     Node {
-    //                         index: 0,
+    //                         source: 0,
     //                         start: 0,
     //                         end: 1,
     //                         children: HashMap::from([(
     //                             'B',
     //                             Node {
-    //                                 index: 0,
+    //                                 source: 0,
     //                                 start: 1,
     //                                 end: 2,
     //                                 children: HashMap::from([(
     //                                     'A',
     //                                     Node {
-    //                                         index: 0,
+    //                                         source: 0,
     //                                         start: 2,
     //                                         end: 3,
     //                                         children: HashMap::from([(
@@ -437,19 +504,19 @@ mod tests {
     //                 (
     //                     'B',
     //                     Node {
-    //                         index: 0,
+    //                         source: 0,
     //                         start: 1,
     //                         end: 2,
     //                         children: HashMap::from([(
     //                             'A',
     //                             Node {
-    //                                 index: 0,
+    //                                 source: 0,
     //                                 start: 2,
     //                                 end: 3,
     //                                 children: HashMap::from([(
     //                                     'B',
     //                                     Node {
-    //                                         index: 0,
+    //                                         source: 0,
     //                                         start: 3,
     //                                         end: 4,
     //                                         children: HashMap::from([(
@@ -481,13 +548,13 @@ mod tests {
     //             children: HashMap::from([(
     //                 'A',
     //                 Node {
-    //                     index: 0,
+    //                     source: 0,
     //                     start: 0,
     //                     end: 1,
     //                     children: HashMap::from([(
     //                         'A',
     //                         Node {
-    //                             index: 0,
+    //                             source: 0,
     //                             start: 1,
     //                             end: 2,
     //                             children: HashMap::from([('A', Node::terminal(0, 2, 3))]),
@@ -516,13 +583,13 @@ mod tests {
     //             children: HashMap::from([(
     //                 'A',
     //                 Node {
-    //                     index: 0,
+    //                     source: 0,
     //                     start: 0,
     //                     end: 1,
     //                     children: HashMap::from([(
     //                         'A',
     //                         Node {
-    //                             index: 1,
+    //                             source: 1,
     //                             start: 1,
     //                             end: 2,
     //                             children: HashMap::from([('A', Node::terminal(2, 2, 3))]),

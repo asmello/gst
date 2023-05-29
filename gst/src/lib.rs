@@ -420,6 +420,23 @@ mod tests {
     }
 
     #[test]
+    fn test_find_multiple_sources() {
+        let result = SuffixTree::from(["banana".to_owned().chars(), "anna".to_owned().chars()]);
+        let mut pos = result.find_all(&['b', 'a', 'n', 'a', 'n', 'a']);
+        pos.sort();
+        assert_eq!(pos, [(0, 0)]);
+        pos = result.find_all(&['a', 'n', 'n', 'a']);
+        pos.sort();
+        assert_eq!(pos, [(1, 0)]);
+        pos = result.find_all(&['n', 'a']);
+        pos.sort();
+        assert_eq!(pos, [(0, 2), (0, 4), (1, 2)]);
+        pos = result.find_all(&['a']);
+        pos.sort();
+        assert_eq!(pos, [(0, 1), (0, 3), (0, 5), (1, 0), (1, 3)]);
+    }
+
+    #[test]
     fn test_find_positions() {
         let result = SuffixTree::from(["abab".to_owned().chars()]);
         let mut pos = result.find_positions(4, 0);

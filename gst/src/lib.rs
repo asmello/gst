@@ -5,20 +5,13 @@ use std::hash::Hash;
 const ROOT: usize = 1;
 
 #[derive(Default, Debug, PartialEq, Eq)]
-struct Node<E>
-where
-    E: Copy + Default + Eq + Hash + Debug,
-{
+struct Node {
     index: usize,
     start: usize,
     end: usize,
-    edges: HashMap<E, usize>,
 }
 
-impl<E> Node<E>
-where
-    E: Copy + Default + Eq + Hash + Debug,
-{
+impl Node {
     fn new(index: usize, start: usize, end: usize) -> Self {
         Self {
             index,
@@ -35,7 +28,8 @@ where
     E: Copy + Default + Eq + Hash + Debug,
 {
     data: Vec<Vec<E>>,
-    nodes: Vec<Node<E>>,
+    nodes: Vec<Node>,
+    edges: HashMap<usize, HashMap<E, usize>>,
     links: HashMap<usize, usize>,
     terminators: HashMap<usize, usize>,
 }
@@ -89,28 +83,32 @@ where
     }
 
     fn add_edge(&mut self, src: usize, key: E, dst: usize) {
-        self.nodes[src - 1].edges.insert(key, dst);
+        self.edges.entry(src).or_default().insert(key, dst);
     }
 
     fn edge_exists(&self, src: usize, key: E) -> bool {
         match src {
             0 => true,
-            n => self.nodes[n - 1].edges.contains_key(&key),
+            n => self
+                .edges
+                .get(&n)
+                .map(|edges| edges.contains_key(&key))
+                .unwrap_or_default(),
         }
     }
 
-    fn edge(&self, src: usize, key: E) -> usize {
-        match src {
+    fn edge(&self, node: usize, key: E) -> usize {
+        match node {
             0 => 1,
-            n => self.nodes[n - 1].edges[&key],
+            n => self.edges[&n][&key],
         }
     }
 
-    fn node(&self, node: usize) -> &Node<E> {
+    fn node(&self, node: usize) -> &Node {
         &self.nodes[node - 1]
     }
 
-    fn node_mut(&mut self, node: usize) -> &mut Node<E> {
+    fn node_mut(&mut self, node: usize) -> &mut Node {
         &mut self.nodes[node - 1]
     }
 
@@ -213,9 +211,12 @@ where
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(fmt, "1\n")?;
-        let n = self.node(ROOT).edges.len();
+        if !self.edges.contains_key(&ROOT) {
+            return Ok(());
+        }
+        let n = self.edges[&ROOT].len();
         let mut stack: Vec<(usize, String, bool)> = Vec::new();
-        for (idx, &child) in self.node(ROOT).edges.values().enumerate() {
+        for (idx, &child) in self.edges[&ROOT].values().enumerate() {
             stack.push((child, "".into(), idx == n - 1));
             while let Some((curr, mut prefix, is_last)) = stack.pop() {
                 let to_add = if is_last { "└──" } else { "├──" };
@@ -233,13 +234,13 @@ where
                     write!(fmt, " ➔ {}", self.links[&curr])?;
                 }
                 write!(fmt, "\n")?;
-                if !self.node(curr).edges.is_empty() {
+                if self.edges.contains_key(&curr) {
                     if is_last {
                         prefix.push_str("    ");
                     } else {
                         prefix.push_str("│   ");
                     }
-                    for (idx, &child) in self.node(curr).edges.values().enumerate() {
+                    for (idx, &child) in self.edges[&curr].values().enumerate() {
                         stack.push((child, prefix.clone(), idx == 0));
                     }
                 }
@@ -258,7 +259,7 @@ mod tests {
     fn test() {
         let str = "cacao";
         let result = SuffixTree::from([str.to_owned().chars()]);
-        println!("{result}");
+        println!("{result}\n{result:#?}");
     }
 
     // #[test]

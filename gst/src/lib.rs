@@ -48,7 +48,7 @@ where
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
-pub struct SuffixTree<E>
+pub struct GeneralizedSuffixTree<E>
 where
     E: Copy + Eq + Hash + Debug,
 {
@@ -58,7 +58,7 @@ where
     links: HashMap<usize, usize>,
 }
 
-impl<E, I, const N: usize> From<[I; N]> for SuffixTree<E>
+impl<E, I, const N: usize> From<[I; N]> for GeneralizedSuffixTree<E>
 where
     I: IntoIterator<Item = E>,
     E: Copy + Default + Eq + Hash + Debug,
@@ -68,7 +68,7 @@ where
     }
 }
 
-impl<E, I> FromIterator<I> for SuffixTree<E>
+impl<E, I> FromIterator<I> for GeneralizedSuffixTree<E>
 where
     I: IntoIterator<Item = E>,
     E: Copy + Default + Eq + Hash + Debug,
@@ -85,7 +85,7 @@ where
     }
 }
 
-impl<E> SuffixTree<E>
+impl<E> GeneralizedSuffixTree<E>
 where
     E: Copy + Default + Eq + Hash + Debug,
 {
@@ -327,7 +327,7 @@ where
     }
 }
 
-impl<E> std::fmt::Display for SuffixTree<E>
+impl<E> std::fmt::Display for GeneralizedSuffixTree<E>
 where
     E: Copy + Default + Eq + Hash + Debug,
 {
@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn test_find_abab() {
-        let result = SuffixTree::from(["abab".to_owned().chars()]);
+        let result = GeneralizedSuffixTree::from(["abab".to_owned().chars()]);
         let mut pos = result.find_all(&['a']);
         pos.sort();
         assert_eq!(pos, [(0, 0), (0, 2)]);
@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn test_find_banana() {
-        let result = SuffixTree::from(["banana".to_owned().chars()]);
+        let result = GeneralizedSuffixTree::from(["banana".to_owned().chars()]);
         let mut pos = result.find_all(&['b', 'a', 'n', 'a', 'n', 'a']);
         pos.sort();
         assert_eq!(pos, [(0, 0)]);
@@ -420,7 +420,8 @@ mod tests {
 
     #[test]
     fn test_find_multiple_sources() {
-        let result = SuffixTree::from(["banana".to_owned().chars(), "anna".to_owned().chars()]);
+        let result =
+            GeneralizedSuffixTree::from(["banana".to_owned().chars(), "anna".to_owned().chars()]);
         let mut pos = result.find_all(&['b', 'a', 'n', 'a', 'n', 'a']);
         pos.sort();
         assert_eq!(pos, [(0, 0)]);
@@ -437,7 +438,7 @@ mod tests {
 
     #[test]
     fn test_find_positions() {
-        let result = SuffixTree::from(["abab".to_owned().chars()]);
+        let result = GeneralizedSuffixTree::from(["abab".to_owned().chars()]);
         let mut pos = result.find_positions(4, 0);
         pos.sort();
         assert_eq!(pos, [(0, 0), (0, 2)]);

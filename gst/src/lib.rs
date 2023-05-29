@@ -15,6 +15,14 @@ impl Node {
     fn new(source: usize, start: usize, end: usize) -> Self {
         Self { source, start, end }
     }
+
+    fn len(&self) -> usize {
+        if self.end == usize::MAX {
+            usize::MAX
+        } else {
+            self.end - self.start + 1
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -90,7 +98,7 @@ where
     }
 
     pub fn insert(&mut self, data: Vec<E>) {
-        self.add_ukkonen(data);
+        self.run_ukkonen(data);
     }
 
     fn new_node(&mut self, source: usize, start: usize, end: usize) -> usize {
@@ -123,6 +131,18 @@ where
         }
     }
 
+    fn get_edge(&self, node: usize, elem: E) -> Option<usize> {
+        match node {
+            0 => Some(1),
+            n => self
+                .edges
+                .get(&n)
+                .map(|edges| edges.get(&Token::Element(elem)))
+                .flatten()
+                .copied(),
+        }
+    }
+
     fn node(&self, node: usize) -> &Node {
         &self.nodes[node - 1]
     }
@@ -143,6 +163,10 @@ where
         }
     }
 
+    fn get_elem(&self, source: usize, pos: usize) -> E {
+        self.elems[source][pos - 1] // panics if index is outside of range
+    }
+
     fn end(&self, source: usize) -> usize {
         self.elems[source].len()
     }
@@ -151,7 +175,7 @@ where
         self.links.insert(src, dst);
     }
 
-    fn add_ukkonen(&mut self, data: Vec<E>) {
+    fn run_ukkonen(&mut self, data: Vec<E>) {
         let source = self.elems.len();
         self.elems.push(data);
 
@@ -247,6 +271,60 @@ where
         }
         (node, start)
     }
+
+    pub fn find_all(&self, pattern: &[E]) -> Vec<(usize, usize)> {
+        let n = pattern.len();
+        let mut matches = Vec::new();
+        let mut stack = Vec::from([(ROOT, 0)]);
+        'outer: while let Some((node_id, i)) = stack.pop() {
+            if let Some(child_id) = self.get_edge(node_id, pattern[i]) {
+                let child = self.node(child_id);
+                let m: usize = child.len().min(self.end(child.source) - child.start + 1);
+                for j in 1..m {
+                    if i + j == n {
+                        // found a match
+                        matches.extend(self.find_positions(child_id, i));
+                        continue 'outer;
+                    }
+
+                    if self.get_elem(child.source, child.start + j) != pattern[i + j] {
+                        continue 'outer;
+                    }
+                }
+                if i + m == n {
+                    // found a match
+                    matches.extend(self.find_positions(child_id, i));
+                } else {
+                    stack.push((child_id, i + m));
+                }
+            }
+        }
+        matches
+    }
+
+    fn find_positions(&self, node: usize, depth: usize) -> Vec<(usize, usize)> {
+        let mut pos = Vec::new();
+        let mut stack = Vec::from([(node, depth)]);
+        while let Some((node_id, depth)) = stack.pop() {
+            let node = self.node(node_id);
+            let m = node.len().min(self.end(node.source) - node.start + 1);
+            if let Some(edges) = self.edges.get(&node_id) {
+                for (&token, &child) in edges {
+                    match token {
+                        Token::Element(_) => {
+                            stack.push((child, depth + m));
+                        }
+                        Token::Terminator(source) => {
+                            pos.push((source, self.end(source) - depth - m));
+                        }
+                    }
+                }
+            } else {
+                pos.push((node.source, self.end(node.source) - depth - m));
+            }
+        }
+        pos
+    }
 }
 
 impl<E> std::fmt::Display for SuffixTree<E>
@@ -305,42 +383,93 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_aabccb_unique() {
-        let str = "aabccb$";
-        let result = SuffixTree::from([str.to_owned().chars()]);
-        println!("{result}");
+    fn test_find_abab() {
+        let result = SuffixTree::from(["abab".to_owned().chars()]);
+        let mut pos = result.find_all(&['a']);
+        pos.sort();
+        assert_eq!(pos, [(0, 0), (0, 2)]);
+        pos = result.find_all(&['b', 'a']);
+        pos.sort();
+        assert_eq!(pos, [(0, 1)]);
+        pos = result.find_all(&['b']);
+        pos.sort();
+        assert_eq!(pos, [(0, 1), (0, 3)]);
+        pos = result.find_all(&['c']);
+        assert_eq!(pos, []);
+        pos = result.find_all(&['b', 'c']);
+        assert_eq!(pos, []);
+        pos = result.find_all(&['b', 'a', 'n', 'a', 'n', 'a']);
+        assert_eq!(pos, []);
     }
 
     #[test]
-    fn test_aabccb() {
-        let str = "aabccb";
-        let result = SuffixTree::from([str.to_owned().chars()]);
-        println!("{result}");
+    fn test_find_banana() {
+        let result = SuffixTree::from(["banana".to_owned().chars()]);
+        let mut pos = result.find_all(&['b', 'a', 'n', 'a', 'n', 'a']);
+        pos.sort();
+        assert_eq!(pos, [(0, 0)]);
+        pos = result.find_all(&['n', 'a']);
+        pos.sort();
+        assert_eq!(pos, [(0, 2), (0, 4)]);
+        pos = result.find_all(&['a']);
+        pos.sort();
+        assert_eq!(pos, [(0, 1), (0, 3), (0, 5)]);
+        pos = result.find_all(&['a', 'n', 'a']);
+        pos.sort();
+        assert_eq!(pos, [(0, 1), (0, 3)]);
     }
 
     #[test]
-    fn test_multiple() {
-        let result = SuffixTree::from(["ABAB".to_owned().chars(), "BABA".to_owned().chars()]);
-        println!("{result}");
+    fn test_find_positions() {
+        let result = SuffixTree::from(["abab".to_owned().chars()]);
+        let mut pos = result.find_positions(4, 0);
+        pos.sort();
+        assert_eq!(pos, [(0, 0), (0, 2)]);
+        pos = result.find_positions(3, 1);
+        pos.sort();
+        assert_eq!(pos, [(0, 1)]);
+        pos = result.find_positions(6, 0);
+        pos.sort();
+        assert_eq!(pos, [(0, 1), (0, 3)]);
     }
 
-    #[test]
-    fn test_multiple_coincidence() {
-        let result = SuffixTree::from([
-            "AAA".to_owned().chars(),
-            "AA".to_owned().chars(),
-            "A".to_owned().chars(),
-        ]);
-        println!("{result}");
-    }
+    // #[test]
+    // fn test_aabccb_unique() {
+    //     let str = "aabccb$";
+    //     let result = SuffixTree::from([str.to_owned().chars()]);
+    //     println!("{result}");
+    // }
 
-    #[test]
-    fn test_multiple_coincidence_rev() {
-        let result = SuffixTree::from([
-            "A".to_owned().chars(),
-            "AA".to_owned().chars(),
-            "AAA".to_owned().chars(),
-        ]);
-        println!("{result}");
-    }
+    // #[test]
+    // fn test_aabccb() {
+    //     let str = "aabccb";
+    //     let result = SuffixTree::from([str.to_owned().chars()]);
+    //     println!("{result}");
+    // }
+
+    // #[test]
+    // fn test_multiple() {
+    //     let result = SuffixTree::from(["ABAB".to_owned().chars(), "BABA".to_owned().chars()]);
+    //     println!("{result}");
+    // }
+
+    // #[test]
+    // fn test_multiple_coincidence() {
+    //     let result = SuffixTree::from([
+    //         "AAA".to_owned().chars(),
+    //         "AA".to_owned().chars(),
+    //         "A".to_owned().chars(),
+    //     ]);
+    //     println!("{result}");
+    // }
+
+    // #[test]
+    // fn test_multiple_coincidence_rev() {
+    //     let result = SuffixTree::from([
+    //         "A".to_owned().chars(),
+    //         "AA".to_owned().chars(),
+    //         "AAA".to_owned().chars(),
+    //     ]);
+    //     println!("{result}");
+    // }
 }

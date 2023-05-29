@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-const NULL: usize = 0;
 const ROOT: usize = 1;
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -84,16 +83,6 @@ where
         self.add_ukkonen(data);
     }
 
-    // fn get_from_tree(&self, node: usize, edge: E, offset: usize) -> Option<E> {
-    //     let node = &self.nodes[node];
-    //     node.edges
-    //         .get(&edge)
-    //         .map(|&child| self.data[node.index][self.nodes[child].start + offset])
-    // }
-    // fn get_child(&self, node: usize, edge: E) -> Option<usize> {
-    //     self.nodes[node].edges.get(&edge).copied()
-    // }
-
     fn new_node(&mut self, index: usize, start: usize, end: usize) -> usize {
         self.nodes.push(Node::new(index, start, end));
         self.nodes.len()
@@ -117,183 +106,105 @@ where
         }
     }
 
+    fn node(&self, node: usize) -> &Node<E> {
+        &self.nodes[node - 1]
+    }
+
+    fn node_mut(&mut self, node: usize) -> &mut Node<E> {
+        &mut self.nodes[node - 1]
+    }
+
     fn link(&self, node: usize) -> usize {
         self.links[&node]
+    }
+
+    fn get(&self, index: usize, pos: usize) -> E {
+        self.data[index][pos - 1]
+    }
+
+    fn end(&self, index: usize) -> usize {
+        self.data[index].len()
     }
 
     fn add_link(&mut self, src: usize, dst: usize) {
         self.links.insert(src, dst);
     }
-    // r can refer to any implicit or explicit state
-    // reference pair (s, w) = r has s as an explicit state and w a string starting at s
-    // (s, w) is canonical if s is the closest ancestor to r (when r is explicit, w is empty)
-    // (s, w) can also be represented (s, (k, p)) for two points (k, p) into the string
 
     fn add_ukkonen(&mut self, data: Vec<E>) {
-        let s = self.data.len();
+        // let z = self.data.len();
         let n = data.len();
         self.data.push(data);
 
-        let mut top = ROOT;
-        let mut prev = NULL;
-        let mut curr;
-
-        for i in 0..n {
-            let t_i = self.data[s][i];
-            curr = top;
-            while !self.edge_exists(curr, t_i) {
-                let new = self.new_node(s, i, i + 1);
-                self.add_edge(curr, t_i, new);
-                if curr != top {
-                    self.add_link(prev, new);
-                }
-                prev = new;
-                curr = self.link(curr);
-            }
-            self.add_link(prev, self.edge(curr, t_i));
-            top = self.edge(top, t_i);
+        let mut node = ROOT;
+        let mut start = 1;
+        for i in 1..=n {
+            (node, start) = self.update(node, start, i);
+            (node, start) = self.canonize(node, start, i);
         }
     }
 
-    // fn add_ukkonen(&mut self, data: Vec<E>) {
-    //     let i = self.data.len();
-    //     let n = data.len();
-    //     self.data.push(data);
-    //     let mut p = 0;
-    //     let mut active_node = 0;
-    //     let mut active_edge = None;
-    //     let mut active_length = 0;
-    //     let mut remainder = 1;
-    //     let mut previous_insertion = None;
-    //     while p < n {
-    //         let curr_data = self.data[i][p];
-    //         if active_edge.is_none() && self.edge_exists(active_node, curr_data) {
-    //             active_edge = Some(curr_data);
-    //             active_length += 1;
-    //             remainder += 1;
-    //             p += 1;
-    //         } else if let Some(edge) = active_edge {
-    //             if let Some(curr_tree) = self.get_from_tree(active_node, edge, active_length) {
-    //                 if curr_tree == curr_data {
-    //                     active_length += 1;
-    //                     remainder += 1;
-    //                     p += 1;
-    //                 } else {
-    //                     let child = self.get_child(active_node, edge).unwrap();
-    //                     let mid = self.nodes.len();
-    //                     self.nodes.push(Node::new(
-    //                         i,
-    //                         self.nodes[child].start,
-    //                         self.nodes[child].start + active_length,
-    //                     ));
-    //                     let new = self.nodes.len();
-    //                     self.nodes.push(Node::new(i, p, n));
-    //                     self.nodes[mid].edges.insert(curr_data, new);
-    //                     self.nodes[mid].edges.insert(curr_tree, child);
-    //                     self.nodes[child].start += active_length;
-    //                     self.nodes[active_node].edges.insert(edge, mid);
-    //                     remainder -= 1;
-    //                     // rule 1
-    //                     if active_node == 0 {
-    //                         active_length -= 1;
-    //                         active_edge = Some(self.data[i][p + 1 - remainder]);
-    //                     }
-    //                     if let Some(previous) = previous_insertion {
-    //                         self.links.insert(previous, mid);
-    //                     }
-    //                     previous_insertion = Some(mid);
-    //                 }
-    //             } else {
-    //                 let new = self.nodes.len();
-    //                 self.nodes.push(Node::new(i, p, n));
-    //                 self.nodes[active_node].edges.insert(curr_data, new);
-    //                 active_edge = None;
-    //                 remainder -= 1;
-    //                 p += 1;
-    //             }
-    //         } else {
-    //             let new = self.nodes.len();
-    //             self.nodes.push(Node::new(i, p, n));
-    //             self.nodes[active_node].edges.insert(curr_data, new);
-    //             p += 1;
-    //         }
-    //     }
-    //     // let mut active_node = 0;
-    //     // // for each prefix S[0..i] = P
-    //     // for i in 0..n {
-    //     //     // for each suffix S[j..i] of P
-    //     //     for j in 0..=i {
-    //     //         let mut curr = active_node; // find path S[j..i] in tree
-    //     //         let curr_data = self.data[0][j];
-    //     //         if j == 0 {
-    //     //             if let Some(&child) = self.nodes[curr].edges.get(&curr_data) {
-    //     //                 self.nodes[child].end += 1;
-    //     //             } else {
-    //     //                 let new = self.nodes.len();
-    //     //                 self.nodes.push(Node::new(0, 0, i + 1));
-    //     //                 self.nodes[curr].edges.insert(curr_data, new);
-    //     //                 active_node = new;
-    //     //             }
-    //     //         } else if j == 1 {
-    //     //             if active_node == 0 {
-    //     //             }
-    //     //         }
-    //     //         let mut k = j;
-    //     //         'outer: while k <= i {
-    //     //             if let Some(&child) = self.nodes[curr].edges.get(&self.data[0][k]) {
-    //     //                 let child_node = &self.nodes[child];
-    //     //                 // we have an edge starting with S[k], traverse it
-    //     //                 // edge case: child.end == n used for leaf nodes, but we should compute length from current end
-    //     //                 // let m = (child_node.end - child_node.start).min(i + 1 - child_node.start);
-    //     //                 let m = child_node.end - child_node.start;
-    //     //                 for u in 1..m {
-    //     //                     if k + u > i {
-    //     //                         // reached end of suffix S[j..=i], apply rule 3 - do nothing
-    //     //                         break 'outer; // extension finished
-    //     //                     }
-    //     //                     let child_value = self.data[child_node.index][child_node.start + u];
-    //     //                     if self.data[0][k + u] != child_value {
-    //     //                         // S[k + u] is not in path, apply rule 2b - create new branch
-    //     //                         let mid = self.nodes.len();
-    //     //                         self.nodes.push(Node::new(
-    //     //                             child_node.index,
-    //     //                             child_node.start,
-    //     //                             child_node.start + u,
-    //     //                         ));
-    //     //                         let new = self.nodes.len();
-    //     //                         self.nodes.push(Node::new(0, k + u, i + 1));
-    //     //                         self.nodes[mid].edges.insert(self.data[0][k + u], new);
-    //     //                         self.nodes[child].start += u;
-    //     //                         self.nodes[mid].edges.insert(child_value, child);
-    //     //                         self.nodes[curr].edges.insert(self.data[0][k], mid);
-    //     //                         break 'outer; // extension finished
-    //     //                     }
-    //     //                 }
-    //     //                 // reached the end of edge, all elements match
-    //     //                 if child_node.edges.is_empty() {
-    //     //                     // apply extension rule 1 - extend edge with S[i] - done implicitly
-    //     //                     self.nodes[child].end += 1;
-    //     //                     break; // extension finished
-    //     //                 } else {
-    //     //                     // continue down the child at edge's end
-    //     //                     curr = *self.nodes[curr].edges.get(&self.data[0][k]).unwrap();
-    //     //                     k += m;
-    //     //                 }
-    //     //             } else {
-    //     //                 // extension rule 2a - create new edge for S[k..=i]
-    //     //                 let new = self.nodes.len();
-    //     //                 self.nodes.push(Node::new(0, k, i + 1));
-    //     //                 self.nodes[curr].edges.insert(self.data[0][k], new);
-    //     //                 break; // extension finished
-    //     //             }
-    //     //         }
-    //     //         // If we get here, this is also rule 3 - do nothing.
-    //     //         // This can happen if the child we were exploring at k == i was an internal node of length exactly 1.
-    //     //         // In that case we don't enter the u-loop, so we don't reach the normal exit point for rule 3. Instead,
-    //     //         // we descend into the child, but since we always advance k by the child's length, the while loop stops
-    //     //         // naturally.
-    //     //     }
-    // }
+    fn update(&mut self, mut node: usize, mut start: usize, i: usize) -> (usize, usize) {
+        let t_i = self.get(0, i);
+        let mut prev = ROOT;
+        let (mut endpoint, mut curr) = self.test_and_split(node, start, i - 1, t_i);
+        while !endpoint {
+            let new = self.new_node(0, i, self.end(0));
+            self.add_edge(curr, t_i, new);
+            if prev != ROOT {
+                self.add_link(prev, curr);
+            }
+            prev = curr;
+            (node, start) = self.canonize(self.link(node), start, i - 1);
+            (endpoint, curr) = self.test_and_split(node, start, i - 1, t_i);
+        }
+        if prev != ROOT {
+            self.add_link(prev, node);
+        }
+        (node, start)
+    }
+
+    fn test_and_split(&mut self, node: usize, start: usize, end: usize, t: E) -> (bool, usize) {
+        if start <= end {
+            let t_start = self.get(0, start);
+            let child = self.edge(node, t_start);
+            let t_mid = self.get(0, 1 + self.node(child).start + end - start);
+            if t == t_mid {
+                (true, node)
+            } else {
+                let mid = self.new_node(
+                    0,
+                    self.node(child).start,
+                    self.node(child).start + end - start,
+                );
+                self.node_mut(child).start += end - start + 1;
+                self.add_edge(mid, t_mid, child);
+                self.add_edge(node, t_start, mid);
+                (false, mid)
+            }
+        } else {
+            if self.edge_exists(node, t) {
+                (true, node)
+            } else {
+                (false, node)
+            }
+        }
+    }
+
+    fn canonize(&mut self, mut node: usize, mut start: usize, end: usize) -> (usize, usize) {
+        if end >= start {
+            let mut t_start = self.get(0, start);
+            let mut child = self.edge(node, t_start);
+            while end >= start && self.node(child).end - self.node(child).start <= end - start {
+                start += self.node(child).end - self.node(child).start + 1;
+                node = child;
+                if start <= end {
+                    t_start = self.get(0, start);
+                    child = self.edge(node, t_start);
+                }
+            }
+        }
+        (node, start)
+    }
 }
 
 impl<E> std::fmt::Display for SuffixTree<E>
@@ -302,18 +213,18 @@ where
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(fmt, "1\n")?;
-        let n = self.nodes[0].edges.len();
-        let mut stack: Vec<(usize, String, bool)> = Vec::with_capacity(n);
-        for (idx, &child) in self.nodes[0].edges.values().enumerate() {
+        let n = self.node(ROOT).edges.len();
+        let mut stack: Vec<(usize, String, bool)> = Vec::new();
+        for (idx, &child) in self.node(ROOT).edges.values().enumerate() {
             stack.push((child, "".into(), idx == n - 1));
             while let Some((curr, mut prefix, is_last)) = stack.pop() {
                 let to_add = if is_last { "└──" } else { "├──" };
                 let curr_prefix: String = prefix.chars().chain(to_add.chars()).collect();
-                let curr_node = &self.nodes[curr - 1];
                 write!(
                     fmt,
-                    "{curr_prefix}{curr}:{:?}",
-                    &self.data[curr_node.index][curr_node.start..curr_node.end],
+                    "{curr_prefix} {curr} {:?}",
+                    &self.data[self.node(curr).index]
+                        [self.node(curr).start - 1..self.node(curr).end],
                 )?;
                 if self.terminators.contains_key(&curr) {
                     write!(fmt, "~{:?}", self.terminators[&curr])?;
@@ -322,13 +233,13 @@ where
                     write!(fmt, " ➔ {}", self.links[&curr])?;
                 }
                 write!(fmt, "\n")?;
-                if !self.nodes[curr - 1].edges.is_empty() {
+                if !self.node(curr).edges.is_empty() {
                     if is_last {
-                        prefix.push_str("   ");
+                        prefix.push_str("    ");
                     } else {
-                        prefix.push_str("│  ");
+                        prefix.push_str("│   ");
                     }
-                    for (idx, &child) in self.nodes[curr - 1].edges.values().enumerate() {
+                    for (idx, &child) in self.node(curr).edges.values().enumerate() {
                         stack.push((child, prefix.clone(), idx == 0));
                     }
                 }

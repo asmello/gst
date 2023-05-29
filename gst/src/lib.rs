@@ -378,7 +378,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    // TODO: load expected from string representation
 
     use super::*;
 
@@ -449,6 +448,8 @@ mod tests {
         pos.sort();
         assert_eq!(pos, [(0, 1), (0, 3)]);
     }
+
+    // TODO: load expected tree from string representation
 
     // #[test]
     // fn test_aabccb_unique() {

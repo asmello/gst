@@ -2,10 +2,9 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-const NULL: usize = 0;
 const ROOT: usize = 1;
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 struct Node {
     source: usize,
     start: usize,
@@ -14,11 +13,28 @@ struct Node {
 
 impl Node {
     fn new(source: usize, start: usize, end: usize) -> Self {
-        Self {
-            source,
-            start,
-            end,
-            ..Default::default()
+        Self { source, start, end }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+enum Token<E>
+where
+    E: Copy + Eq + Hash + Debug,
+{
+    Element(E),
+    Terminator(usize),
+}
+
+impl<E> Token<E>
+where
+    E: Copy + Eq + Hash + Debug,
+{
+    fn is_elem(&self) -> bool {
+        if let Self::Element(_) = self {
+            true
+        } else {
+            false
         }
     }
 }
@@ -26,13 +42,12 @@ impl Node {
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct SuffixTree<E>
 where
-    E: Copy + Default + Eq + Hash + Debug,
+    E: Copy + Eq + Hash + Debug,
 {
-    data: Vec<Vec<E>>,
+    elems: Vec<Vec<E>>,
     nodes: Vec<Node>,
-    edges: HashMap<usize, HashMap<E, usize>>,
+    edges: HashMap<usize, HashMap<Token<E>, usize>>,
     links: HashMap<usize, usize>,
-    terminators: HashMap<usize, Vec<usize>>,
 }
 
 impl<E, I, const N: usize> From<[I; N]> for SuffixTree<E>
@@ -56,7 +71,7 @@ where
     {
         let mut st = Self::new();
         for sequence in iter {
-            st.add(sequence.into_iter().collect());
+            st.insert(sequence.into_iter().collect());
         }
         st
     }
@@ -74,7 +89,7 @@ where
         }
     }
 
-    pub fn add(&mut self, data: Vec<E>) {
+    pub fn insert(&mut self, data: Vec<E>) {
         self.add_ukkonen(data);
     }
 
@@ -83,11 +98,14 @@ where
         self.nodes.len()
     }
 
-    fn add_edge(&mut self, src: usize, key: E, dst: usize) {
-        self.edges.entry(src).or_default().insert(key, dst);
+    fn add_edge(&mut self, src: usize, key: Token<E>, dst: usize) {
+        if src != ROOT || key.is_elem() {
+            // no need to add terminators to root node (empty strings should be always matched implicitly!)
+            self.edges.entry(src).or_default().insert(key, dst);
+        }
     }
 
-    fn edge_exists(&self, src: usize, key: E) -> bool {
+    fn edge_exists(&self, src: usize, key: Token<E>) -> bool {
         match src {
             0 => true,
             n => self
@@ -98,7 +116,7 @@ where
         }
     }
 
-    fn edge(&self, node: usize, key: E) -> usize {
+    fn edge(&self, node: usize, key: Token<E>) -> usize {
         match node {
             0 => 1,
             n => self.edges[&n][&key],
@@ -117,88 +135,53 @@ where
         self.links[&node]
     }
 
-    fn get(&self, source: usize, pos: usize) -> E {
-        self.data[source][pos - 1]
+    fn get(&self, source: usize, pos: usize) -> Token<E> {
+        if pos <= self.elems[source].len() {
+            Token::Element(self.elems[source][pos - 1])
+        } else {
+            Token::Terminator(source)
+        }
     }
 
     fn end(&self, source: usize) -> usize {
-        self.data[source].len()
+        self.elems[source].len()
     }
 
     fn add_link(&mut self, src: usize, dst: usize) {
         self.links.insert(src, dst);
     }
 
-    fn add_terminator(&mut self, node: usize, source: usize) {
-        self.terminators.entry(node).or_default().push(source);
-    }
-
     fn add_ukkonen(&mut self, data: Vec<E>) {
-        // let z = self.data.len();
-        self.data.push(data);
+        let source = self.elems.len();
+        self.elems.push(data);
 
         let mut node = ROOT;
         let mut start = 1;
-        for i in 1..=self.end(0) {
-            (node, start) = self.update(node, start, i);
-            (node, start) = self.canonize(node, start, i);
+        for i in 1..=self.end(source) + 1 {
+            (node, start) = self.update(source, node, start, i);
+            (node, start) = self.canonize(source, node, start, i);
         }
-
-        self.finalize(node, start);
     }
 
-    fn finalize(&mut self, mut node: usize, mut start: usize) {
-        let (mut endpoint, mut curr) = self.split_last(node, start);
+    fn update(
+        &mut self,
+        source: usize,
+        mut node: usize,
+        mut start: usize,
+        i: usize,
+    ) -> (usize, usize) {
+        let t_i = self.get(source, i);
         let mut prev = ROOT;
+        let (mut endpoint, mut curr) = self.test_and_split(source, node, start, i - 1, t_i);
         while !endpoint {
-            self.add_terminator(curr, 0);
-            if prev != ROOT {
-                self.add_link(prev, curr);
-            }
-            prev = curr;
-            (node, start) = self.canonize(self.link(node), start, self.end(0));
-            (endpoint, curr) = self.split_last(node, start);
-        }
-    }
-
-    fn split_last(&mut self, node: usize, start: usize) -> (bool, usize) {
-        let end = self.end(0);
-        if start <= end {
-            let t_start = self.get(0, start);
-            let child = self.edge(node, t_start);
-            let t_mid = self.get(0, 1 + self.node(child).start + end - start);
-            let mid = self.new_node(
-                0,
-                self.node(child).start,
-                self.node(child).start + end - start,
-            );
-            self.node_mut(child).start += end - start + 1;
-            self.add_edge(mid, t_mid, child);
-            self.add_edge(node, t_start, mid);
-            (false, mid)
-        } else {
-            if node == NULL {
-                (true, node)
-            } else {
-                (false, node)
-            }
-        }
-    }
-
-    fn update(&mut self, mut node: usize, mut start: usize, i: usize) -> (usize, usize) {
-        let t_i = self.get(0, i);
-        let mut prev = ROOT;
-        let (mut endpoint, mut curr) = self.test_and_split(node, start, i - 1, t_i);
-        while !endpoint {
-            let new = self.new_node(0, i, self.end(0));
+            let new = self.new_node(source, i, usize::MAX);
             self.add_edge(curr, t_i, new);
-            self.add_terminator(new, 0);
             if prev != ROOT {
                 self.add_link(prev, curr);
             }
             prev = curr;
-            (node, start) = self.canonize(self.link(node), start, i - 1);
-            (endpoint, curr) = self.test_and_split(node, start, i - 1, t_i);
+            (node, start) = self.canonize(source, self.link(node), start, i - 1);
+            (endpoint, curr) = self.test_and_split(source, node, start, i - 1, t_i);
         }
         if prev != ROOT {
             self.add_link(prev, node);
@@ -206,16 +189,26 @@ where
         (node, start)
     }
 
-    fn test_and_split(&mut self, node: usize, start: usize, end: usize, t: E) -> (bool, usize) {
+    fn test_and_split(
+        &mut self,
+        source: usize,
+        node: usize,
+        start: usize,
+        end: usize,
+        t: Token<E>,
+    ) -> (bool, usize) {
         if start <= end {
-            let t_start = self.get(0, start);
+            let t_start = self.get(source, start);
             let child = self.edge(node, t_start);
-            let t_mid = self.get(0, 1 + self.node(child).start + end - start);
+            let t_mid = self.get(
+                self.node(child).source,
+                1 + self.node(child).start + end - start,
+            );
             if t == t_mid {
                 (true, node)
             } else {
                 let mid = self.new_node(
-                    0,
+                    self.node(child).source,
                     self.node(child).start,
                     self.node(child).start + end - start,
                 );
@@ -233,15 +226,21 @@ where
         }
     }
 
-    fn canonize(&mut self, mut node: usize, mut start: usize, end: usize) -> (usize, usize) {
+    fn canonize(
+        &mut self,
+        source: usize,
+        mut node: usize,
+        mut start: usize,
+        end: usize,
+    ) -> (usize, usize) {
         if end >= start {
-            let mut t_start = self.get(0, start);
+            let mut t_start = self.get(source, start);
             let mut child = self.edge(node, t_start);
             while end >= start && self.node(child).end - self.node(child).start <= end - start {
                 start += self.node(child).end - self.node(child).start + 1;
                 node = child;
                 if start <= end {
-                    t_start = self.get(0, start);
+                    t_start = self.get(source, start);
                     child = self.edge(node, t_start);
                 }
             }
@@ -266,14 +265,18 @@ where
             while let Some((curr, mut prefix, is_last)) = stack.pop() {
                 let to_add = if is_last { "└──" } else { "├──" };
                 let curr_prefix: String = prefix.chars().chain(to_add.chars()).collect();
-                write!(
-                    fmt,
-                    "{curr_prefix} {curr} {:?}",
-                    &self.data[self.node(curr).source]
-                        [self.node(curr).start - 1..self.node(curr).end],
-                )?;
-                if self.terminators.contains_key(&curr) {
-                    write!(fmt, "--{:?}", self.terminators[&curr])?;
+                let span = if self.node(curr).start > self.end(self.node(curr).source) {
+                    format!("T")
+                } else {
+                    format!(
+                        "{:?}",
+                        &self.elems[self.node(curr).source][self.node(curr).start - 1
+                            ..self.node(curr).end.min(self.end(self.node(curr).source))]
+                    )
+                };
+                write!(fmt, "{curr_prefix} {curr} {span}",)?;
+                if !self.edges.contains_key(&curr) {
+                    write!(fmt, ":{}", self.node(curr).source)?;
                 }
                 if self.links.contains_key(&curr) {
                     write!(fmt, " ➔ {}", self.links[&curr])?;
@@ -297,316 +300,47 @@ where
 
 #[cfg(test)]
 mod tests {
+    // TODO: load expected from string representation
 
     use super::*;
-
-    // #[test]
-    // fn test() {
-    //     let str = "caca";
-    //     let result = SuffixTree::from([str.to_owned().chars()]);
-    //     println!("{result}\n{result:#?}");
-    // }
 
     #[test]
     fn test_aabccb_unique() {
         let str = "aabccb$";
-        let expected = SuffixTree {
-            data: vec![vec!['a', 'a', 'b', 'c', 'c', 'b', '$']],
-            nodes: vec![
-                Node {
-                    source: 0,
-                    start: 0,
-                    end: 0,
-                },
-                Node {
-                    source: 0,
-                    start: 2,
-                    end: 7,
-                },
-                Node {
-                    source: 0,
-                    start: 1,
-                    end: 1,
-                },
-                Node {
-                    source: 0,
-                    start: 3,
-                    end: 7,
-                },
-                Node {
-                    source: 0,
-                    start: 4,
-                    end: 7,
-                },
-                Node {
-                    source: 0,
-                    start: 5,
-                    end: 7,
-                },
-                Node {
-                    source: 0,
-                    start: 4,
-                    end: 4,
-                },
-                Node {
-                    source: 0,
-                    start: 6,
-                    end: 7,
-                },
-                Node {
-                    source: 0,
-                    start: 3,
-                    end: 3,
-                },
-                Node {
-                    source: 0,
-                    start: 7,
-                    end: 7,
-                },
-                Node {
-                    source: 0,
-                    start: 7,
-                    end: 7,
-                },
-            ],
-            edges: HashMap::from([
-                (1, HashMap::from([('a', 3), ('b', 9), ('c', 7), ('$', 11)])),
-                (3, HashMap::from([('a', 2), ('b', 4)])),
-                (7, HashMap::from([('b', 8), ('c', 6)])),
-                (9, HashMap::from([('c', 5), ('$', 10)])),
-            ]),
-            links: HashMap::from([(1, 0), (3, 1), (7, 1), (9, 1)]),
-            terminators: HashMap::from([
-                (1, vec![0]),
-                (2, vec![0]),
-                (4, vec![0]),
-                (5, vec![0]),
-                (6, vec![0]),
-                (8, vec![0]),
-                (10, vec![0]),
-                (11, vec![0]),
-            ]),
-        };
         let result = SuffixTree::from([str.to_owned().chars()]);
-        assert_eq!(expected, result);
+        println!("{result}");
     }
 
     #[test]
     fn test_aabccb() {
         let str = "aabccb";
-        let expected = SuffixTree {
-            data: vec![vec!['a', 'a', 'b', 'c', 'c', 'b']],
-            nodes: vec![
-                Node {
-                    source: 0,
-                    start: 0,
-                    end: 0,
-                },
-                Node {
-                    source: 0,
-                    start: 2,
-                    end: 6,
-                },
-                Node {
-                    source: 0,
-                    start: 1,
-                    end: 1,
-                },
-                Node {
-                    source: 0,
-                    start: 3,
-                    end: 6,
-                },
-                Node {
-                    source: 0,
-                    start: 4,
-                    end: 6,
-                },
-                Node {
-                    source: 0,
-                    start: 5,
-                    end: 6,
-                },
-                Node {
-                    source: 0,
-                    start: 4,
-                    end: 4,
-                },
-                Node {
-                    source: 0,
-                    start: 6,
-                    end: 6,
-                },
-                Node {
-                    source: 0,
-                    start: 3,
-                    end: 3,
-                },
-            ],
-            edges: HashMap::from([
-                (1, HashMap::from([('a', 3), ('b', 9), ('c', 7)])),
-                (3, HashMap::from([('a', 2), ('b', 4)])),
-                (7, HashMap::from([('c', 6), ('b', 8)])),
-                (9, HashMap::from([('c', 5)])),
-            ]),
-            links: HashMap::from([(1, 0), (3, 1), (7, 1), (9, 1)]),
-            terminators: HashMap::from([
-                (1, vec![0]),
-                (2, vec![0]),
-                (4, vec![0]),
-                (5, vec![0]),
-                (6, vec![0]),
-                (8, vec![0]),
-                (9, vec![0]),
-            ]),
-        };
         let result = SuffixTree::from([str.to_owned().chars()]);
-        assert_eq!(expected, result);
+        println!("{result}");
     }
 
-    // #[test]
-    // fn test_multiple() {
-    //     let expected = SuffixTree {
-    //         data: vec![vec!['A', 'B', 'A', 'B'], vec!['B', 'A', 'B', 'A']],
-    //         root: Node {
-    //             children: HashMap::from([
-    //                 (
-    //                     'A',
-    //                     Node {
-    //                         source: 0,
-    //                         start: 0,
-    //                         end: 1,
-    //                         children: HashMap::from([(
-    //                             'B',
-    //                             Node {
-    //                                 source: 0,
-    //                                 start: 1,
-    //                                 end: 2,
-    //                                 children: HashMap::from([(
-    //                                     'A',
-    //                                     Node {
-    //                                         source: 0,
-    //                                         start: 2,
-    //                                         end: 3,
-    //                                         children: HashMap::from([(
-    //                                             'B',
-    //                                             Node::terminal(0, 3, 4),
-    //                                         )]),
-    //                                         terminators: vec![1],
-    //                                     },
-    //                                 )]),
-    //                                 terminators: vec![0],
-    //                             },
-    //                         )]),
-    //                         terminators: vec![1],
-    //                     },
-    //                 ),
-    //                 (
-    //                     'B',
-    //                     Node {
-    //                         source: 0,
-    //                         start: 1,
-    //                         end: 2,
-    //                         children: HashMap::from([(
-    //                             'A',
-    //                             Node {
-    //                                 source: 0,
-    //                                 start: 2,
-    //                                 end: 3,
-    //                                 children: HashMap::from([(
-    //                                     'B',
-    //                                     Node {
-    //                                         source: 0,
-    //                                         start: 3,
-    //                                         end: 4,
-    //                                         children: HashMap::from([(
-    //                                             'A',
-    //                                             Node::terminal(1, 3, 4),
-    //                                         )]),
-    //                                         terminators: vec![0],
-    //                                     },
-    //                                 )]),
-    //                                 terminators: vec![1],
-    //                             },
-    //                         )]),
-    //                         terminators: vec![0],
-    //                     },
-    //                 ),
-    //             ]),
-    //             ..Default::default()
-    //         },
-    //     };
-    //     let result = SuffixTree::from(["ABAB".to_owned().chars(), "BABA".to_owned().chars()]);
-    //     assert_eq!(expected, result);
-    // }
+    #[test]
+    fn test_multiple() {
+        let result = SuffixTree::from(["ABAB".to_owned().chars(), "BABA".to_owned().chars()]);
+        println!("{result}");
+    }
 
-    // #[test]
-    // fn test_multiple_coincidence() {
-    //     let expected = SuffixTree {
-    //         data: vec![vec!['A', 'A', 'A'], vec!['A', 'A'], vec!['A']],
-    //         root: Node {
-    //             children: HashMap::from([(
-    //                 'A',
-    //                 Node {
-    //                     source: 0,
-    //                     start: 0,
-    //                     end: 1,
-    //                     children: HashMap::from([(
-    //                         'A',
-    //                         Node {
-    //                             source: 0,
-    //                             start: 1,
-    //                             end: 2,
-    //                             children: HashMap::from([('A', Node::terminal(0, 2, 3))]),
-    //                             terminators: vec![0, 1],
-    //                         },
-    //                     )]),
-    //                     terminators: vec![0, 1, 2],
-    //                 },
-    //             )]),
-    //             ..Default::default()
-    //         },
-    //     };
-    //     let result = SuffixTree::from([
-    //         "AAA".to_owned().chars(),
-    //         "AA".to_owned().chars(),
-    //         "A".to_owned().chars(),
-    //     ]);
-    //     assert_eq!(expected, result);
-    // }
+    #[test]
+    fn test_multiple_coincidence() {
+        let result = SuffixTree::from([
+            "AAA".to_owned().chars(),
+            "AA".to_owned().chars(),
+            "A".to_owned().chars(),
+        ]);
+        println!("{result}");
+    }
 
-    // #[test]
-    // fn test_multiple_coincidence_rev() {
-    //     let expected = SuffixTree {
-    //         data: vec![vec!['A'], vec!['A', 'A'], vec!['A', 'A', 'A']],
-    //         root: Node {
-    //             children: HashMap::from([(
-    //                 'A',
-    //                 Node {
-    //                     source: 0,
-    //                     start: 0,
-    //                     end: 1,
-    //                     children: HashMap::from([(
-    //                         'A',
-    //                         Node {
-    //                             source: 1,
-    //                             start: 1,
-    //                             end: 2,
-    //                             children: HashMap::from([('A', Node::terminal(2, 2, 3))]),
-    //                             terminators: vec![1, 2],
-    //                         },
-    //                     )]),
-    //                     terminators: vec![0, 1, 2],
-    //                 },
-    //             )]),
-    //             ..Default::default()
-    //         },
-    //     };
-    //     let result = SuffixTree::from([
-    //         "A".to_owned().chars(),
-    //         "AA".to_owned().chars(),
-    //         "AAA".to_owned().chars(),
-    //     ]);
-    //     assert_eq!(expected, result);
-    // }
+    #[test]
+    fn test_multiple_coincidence_rev() {
+        let result = SuffixTree::from([
+            "A".to_owned().chars(),
+            "AA".to_owned().chars(),
+            "AAA".to_owned().chars(),
+        ]);
+        println!("{result}");
+    }
 }

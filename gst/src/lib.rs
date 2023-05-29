@@ -255,113 +255,145 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test() {
-        let str = "cacao";
-        let result = SuffixTree::from([str.to_owned().chars()]);
-        println!("{result}\n{result:#?}");
-    }
-
     // #[test]
-    // fn test_aabccb_unique() {
-    //     let str = "aabccb$";
-    //     let expected = SuffixTree {
-    //         data: vec![str.to_owned().chars().collect()],
-    //         root: Node {
-    //             children: HashMap::from([
-    //                 ('$', Node::terminal(0, 6, 7)),
-    //                 (
-    //                     'a',
-    //                     Node {
-    //                         start: 0,
-    //                         end: 1,
-    //                         children: HashMap::from([
-    //                             ('a', Node::terminal(0, 1, 7)), // abccb$
-    //                             ('b', Node::terminal(0, 2, 7)), // bccb$
-    //                         ]),
-    //                         ..Default::default()
-    //                     },
-    //                 ),
-    //                 (
-    //                     'b',
-    //                     Node {
-    //                         start: 2,
-    //                         end: 3,
-    //                         children: HashMap::from([
-    //                             ('$', Node::terminal(0, 6, 7)), // $
-    //                             ('c', Node::terminal(0, 3, 7)), // ccb$
-    //                         ]),
-    //                         ..Default::default()
-    //                     },
-    //                 ),
-    //                 (
-    //                     'c',
-    //                     Node {
-    //                         start: 3,
-    //                         end: 4,
-    //                         children: HashMap::from([
-    //                             ('b', Node::terminal(0, 5, 7)), // b$
-    //                             ('c', Node::terminal(0, 4, 7)), // cb$
-    //                         ]),
-    //                         ..Default::default()
-    //                     },
-    //                 ),
-    //             ]),
-    //             ..Default::default()
-    //         },
-    //     };
+    // fn test() {
+    //     let str = "cacao";
     //     let result = SuffixTree::from([str.to_owned().chars()]);
-    //     assert_eq!(expected, result);
+    //     println!("{result}\n{result:#?}");
     // }
+
+    #[test]
+    fn test_aabccb_unique() {
+        let str = "aabccb$";
+        let expected = SuffixTree {
+            data: vec![vec!['a', 'a', 'b', 'c', 'c', 'b', '$']],
+            nodes: vec![
+                Node {
+                    index: 0,
+                    start: 0,
+                    end: 0,
+                },
+                Node {
+                    index: 0,
+                    start: 2,
+                    end: 7,
+                },
+                Node {
+                    index: 0,
+                    start: 1,
+                    end: 1,
+                },
+                Node {
+                    index: 0,
+                    start: 3,
+                    end: 7,
+                },
+                Node {
+                    index: 0,
+                    start: 4,
+                    end: 7,
+                },
+                Node {
+                    index: 0,
+                    start: 5,
+                    end: 7,
+                },
+                Node {
+                    index: 0,
+                    start: 4,
+                    end: 4,
+                },
+                Node {
+                    index: 0,
+                    start: 6,
+                    end: 7,
+                },
+                Node {
+                    index: 0,
+                    start: 3,
+                    end: 3,
+                },
+                Node {
+                    index: 0,
+                    start: 7,
+                    end: 7,
+                },
+                Node {
+                    index: 0,
+                    start: 7,
+                    end: 7,
+                },
+            ],
+            edges: HashMap::from([
+                (3, HashMap::from([('b', 4), ('a', 2)])),
+                (7, HashMap::from([('b', 8), ('c', 6)])),
+                (1, HashMap::from([('a', 3), ('b', 9), ('$', 11), ('c', 7)])),
+                (9, HashMap::from([('$', 10), ('c', 5)])),
+            ]),
+            links: HashMap::from([(3, 1), (9, 1), (1, 0), (7, 1)]),
+            ..Default::default()
+        };
+        let result = SuffixTree::from([str.to_owned().chars()]);
+        assert_eq!(expected, result);
+    }
 
     // #[test]
     // fn test_aabccb() {
     //     let str = "aabccb";
     //     let expected = SuffixTree {
-    //         data: vec![str.to_owned().chars().collect()],
-    //         root: Node {
-    //             children: HashMap::from([
-    //                 (
-    //                     'a',
-    //                     Node {
-    //                         start: 0,
-    //                         end: 1,
-    //                         children: HashMap::from([
-    //                             ('a', Node::terminal(0, 1, 6)), // abccb
-    //                             ('b', Node::terminal(0, 2, 6)), // bccb
-    //                         ]),
-    //                         ..Default::default()
-    //                     },
-    //                 ),
-    //                 (
-    //                     'b',
-    //                     Node {
-    //                         start: 2,
-    //                         end: 3,
-    //                         children: HashMap::from([
-    //                             ('c', Node::terminal(0, 3, 6)), // ccb
-    //                         ]),
-    //                         terminators: vec![0],
-    //                         ..Default::default()
-    //                     },
-    //                 ),
-    //                 (
-    //                     'c',
-    //                     Node {
-    //                         start: 3,
-    //                         end: 4,
-    //                         children: HashMap::from([
-    //                             ('b', Node::terminal(0, 5, 6)), // b
-    //                             ('c', Node::terminal(0, 4, 6)), // cb
-    //                         ]),
-    //                         ..Default::default()
-    //                     },
-    //                 ),
-    //             ]),
-    //             ..Default::default()
-    //         },
+    //         data: vec![vec!['a', 'a', 'b', 'c', 'c', 'b']],
+    //         nodes: vec![
+    //             Node {
+    //                 index: 0,
+    //                 start: 0,
+    //                 end: 0,
+    //             },
+    //             Node {
+    //                 index: 0,
+    //                 start: 2,
+    //                 end: 6,
+    //             },
+    //             Node {
+    //                 index: 0,
+    //                 start: 1,
+    //                 end: 1,
+    //             },
+    //             Node {
+    //                 index: 0,
+    //                 start: 3,
+    //                 end: 6,
+    //             },
+    //             Node {
+    //                 index: 0,
+    //                 start: 3,
+    //                 end: 6,
+    //             },
+    //             Node {
+    //                 index: 0,
+    //                 start: 5,
+    //                 end: 6,
+    //             },
+    //             Node {
+    //                 index: 0,
+    //                 start: 4,
+    //                 end: 4,
+    //             },
+    //             Node {
+    //                 index: 0,
+    //                 start: 6,
+    //                 end: 6,
+    //             },
+    //         ],
+    //         edges: HashMap::from([
+    //             (3, HashMap::from([('b', 4), ('a', 2)])),
+    //             (7, HashMap::from([('b', 8), ('c', 6)])),
+    //             (1, HashMap::from([('a', 3), ('b', 5), ('c', 7)])),
+    //         ]),
+    //         links: HashMap::from([(3, 1), (1, 0), (7, 1)]),
+    //         ..Default::default()
     //     };
     //     let result = SuffixTree::from([str.to_owned().chars()]);
+    //     println!("{result}");
     //     assert_eq!(expected, result);
     // }
 

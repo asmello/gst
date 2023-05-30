@@ -173,6 +173,10 @@ where
         self.elems[source][pos - 1] // panics if index is outside of range
     }
 
+    pub fn get_source(&self, source: usize) -> &[E] {
+        &self.elems[source]
+    }
+
     fn end(&self, source: usize) -> usize {
         self.elems[source].len()
     }
@@ -181,11 +185,11 @@ where
         self.links.insert(src, dst);
     }
 
-    pub fn insert(&mut self, elems: impl IntoIterator<Item = E>) {
-        self.run_ukkonen(elems.into_iter());
+    pub fn insert(&mut self, elems: impl IntoIterator<Item = E>) -> usize {
+        self.run_ukkonen(elems.into_iter())
     }
 
-    fn run_ukkonen(&mut self, stream: impl Iterator<Item = E>) {
+    fn run_ukkonen(&mut self, stream: impl Iterator<Item = E>) -> usize {
         let source = self.elems.len();
         self.elems.push(Vec::with_capacity(stream.size_hint().0));
 
@@ -200,6 +204,8 @@ where
         }
         // last update makes the tree explicit
         self.update(source, node, start, i);
+
+        source
     }
 
     fn update(

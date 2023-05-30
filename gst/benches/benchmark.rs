@@ -14,7 +14,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(id), &input, |b, &input| {
             b.iter(|| {
                 let mut st = GeneralizedSuffixTree::new();
-                st.insert(input.chars().collect());
+                st.insert(input.chars());
             })
         });
     }

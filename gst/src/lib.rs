@@ -79,7 +79,7 @@ where
     {
         let mut st = Self::new();
         for sequence in iter {
-            st.insert(sequence.into_iter().collect());
+            st.insert(sequence);
         }
         st
     }
@@ -95,10 +95,6 @@ where
             links: HashMap::from([(1, 0)]),
             ..Default::default()
         }
-    }
-
-    pub fn insert(&mut self, data: Vec<E>) {
-        self.run_ukkonen(data);
     }
 
     fn new_node(&mut self, source: usize, start: usize, end: usize) -> usize {
@@ -175,16 +171,25 @@ where
         self.links.insert(src, dst);
     }
 
-    fn run_ukkonen(&mut self, data: Vec<E>) {
+    pub fn insert(&mut self, elems: impl IntoIterator<Item = E>) {
+        self.run_ukkonen(elems.into_iter());
+    }
+
+    fn run_ukkonen(&mut self, stream: impl Iterator<Item = E>) {
         let source = self.elems.len();
-        self.elems.push(data);
+        self.elems.push(Vec::with_capacity(stream.size_hint().0));
 
         let mut node = ROOT;
         let mut start = 1;
-        for i in 1..=self.end(source) + 1 {
+        let mut i = 1;
+        for elem in stream {
+            self.elems[source].push(elem);
             (node, start) = self.update(source, node, start, i);
             (node, start) = self.canonize(source, node, start, i);
+            i += 1;
         }
+        // last update makes the tree explicit
+        self.update(source, node, start, i);
     }
 
     fn update(

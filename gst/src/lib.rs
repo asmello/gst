@@ -287,6 +287,38 @@ where
         (node, start)
     }
 
+    pub fn contains(&self, pattern: &[E]) -> bool {
+        self.find_one(pattern).is_some()
+    }
+
+    pub fn find_one(&self, pattern: &[E]) -> Option<(usize, usize)> {
+        let n = pattern.len();
+        let mut stack = Vec::from([(ROOT, 0)]);
+        'outer: while let Some((node_id, i)) = stack.pop() {
+            if let Some(child_id) = self.get_edge(node_id, pattern[i]) {
+                let child = self.node(child_id);
+                let m: usize = child.len().min(self.end(child.source) - child.start + 1);
+                for j in 1..m {
+                    if i + j == n {
+                        // found a match
+                        return Some((child.source, child.start + j - n - 1));
+                    }
+
+                    if self.get_elem(child.source, child.start + j) != pattern[i + j] {
+                        continue 'outer;
+                    }
+                }
+                if i + m == n {
+                    // found a match
+                    return Some((child.source, child.end.min(self.end(child.source)) - n));
+                } else {
+                    stack.push((child_id, i + m));
+                }
+            }
+        }
+        None
+    }
+
     pub fn find_all(&self, pattern: &[E]) -> Vec<(usize, usize)> {
         let n = pattern.len();
         let mut matches = Vec::new();
@@ -395,9 +427,69 @@ where
 mod tests {
 
     use super::*;
+    #[test]
+    fn test_contains_abab() {
+        let result = GeneralizedSuffixTree::from(["abab".to_owned().chars()]);
+        let mut pos = result.contains(&['a']);
+        assert_eq!(pos, true);
+        pos = result.contains(&['b', 'a']);
+        assert_eq!(pos, true);
+        pos = result.contains(&['b']);
+        assert_eq!(pos, true);
+        pos = result.contains(&['c']);
+        assert_eq!(pos, false);
+        pos = result.contains(&['b', 'c']);
+        assert_eq!(pos, false);
+        pos = result.contains(&['b', 'a', 'n', 'a', 'n', 'a']);
+        assert_eq!(pos, false);
+    }
 
     #[test]
-    fn test_find_abab() {
+    fn test_find_one_abab() {
+        let result = GeneralizedSuffixTree::from(["abab".to_owned().chars()]);
+        let mut pos = result.find_one(&['a']);
+        assert_eq!(pos, Some((0, 0)));
+        pos = result.find_one(&['b', 'a']);
+        assert_eq!(pos, Some((0, 1)));
+        pos = result.find_one(&['b']);
+        assert_eq!(pos, Some((0, 1)));
+        pos = result.find_one(&['c']);
+        assert_eq!(pos, None);
+        pos = result.find_one(&['b', 'c']);
+        assert_eq!(pos, None);
+        pos = result.find_one(&['b', 'a', 'n', 'a', 'n', 'a']);
+        assert_eq!(pos, None);
+    }
+
+    #[test]
+    fn test_find_one_banana() {
+        let result = GeneralizedSuffixTree::from(["banana".to_owned().chars()]);
+        let mut pos = result.find_one(&['b', 'a', 'n', 'a', 'n', 'a']);
+        assert_eq!(pos, Some((0, 0)));
+        pos = result.find_one(&['n', 'a']);
+        assert_eq!(pos, Some((0, 2)));
+        pos = result.find_one(&['a']);
+        assert_eq!(pos, Some((0, 1)));
+        pos = result.find_one(&['a', 'n', 'a']);
+        assert_eq!(pos, Some((0, 1)));
+    }
+
+    #[test]
+    fn test_find_one_multiple_sources() {
+        let result =
+            GeneralizedSuffixTree::from(["banana".to_owned().chars(), "anna".to_owned().chars()]);
+        let mut pos = result.find_one(&['b', 'a', 'n', 'a', 'n', 'a']);
+        assert_eq!(pos, Some((0, 0)));
+        pos = result.find_one(&['a', 'n', 'n', 'a']);
+        assert_eq!(pos, Some((1, 0)));
+        pos = result.find_one(&['n', 'a']);
+        assert_eq!(pos, Some((0, 2)));
+        pos = result.find_one(&['a']);
+        assert_eq!(pos, Some((0, 1)));
+    }
+
+    #[test]
+    fn test_find_all_abab() {
         let result = GeneralizedSuffixTree::from(["abab".to_owned().chars()]);
         let mut pos = result.find_all(&['a']);
         pos.sort();
@@ -417,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn test_find_banana() {
+    fn test_find_all_banana() {
         let result = GeneralizedSuffixTree::from(["banana".to_owned().chars()]);
         let mut pos = result.find_all(&['b', 'a', 'n', 'a', 'n', 'a']);
         pos.sort();
@@ -434,7 +526,7 @@ mod tests {
     }
 
     #[test]
-    fn test_find_multiple_sources() {
+    fn test_find_all_multiple_sources() {
         let result =
             GeneralizedSuffixTree::from(["banana".to_owned().chars(), "anna".to_owned().chars()]);
         let mut pos = result.find_all(&['b', 'a', 'n', 'a', 'n', 'a']);

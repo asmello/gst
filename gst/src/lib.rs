@@ -77,8 +77,9 @@ where
     where
         T: IntoIterator<Item = I>,
     {
-        let mut st = Self::new();
-        for sequence in iter {
+        let it = iter.into_iter();
+        let mut st = Self::with_capacity(it.size_hint().0);
+        for sequence in it {
             st.insert(sequence);
         }
         st
@@ -91,6 +92,15 @@ where
 {
     pub fn new() -> Self {
         Self {
+            nodes: vec![Node::new(0, 0, 0)],
+            links: HashMap::from([(1, 0)]),
+            ..Default::default()
+        }
+    }
+
+    fn with_capacity(capacity: usize) -> Self {
+        Self {
+            elems: Vec::with_capacity(capacity),
             nodes: vec![Node::new(0, 0, 0)],
             links: HashMap::from([(1, 0)]),
             ..Default::default()

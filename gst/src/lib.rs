@@ -58,6 +58,15 @@ where
     links: HashMap<usize, usize>,
 }
 
+pub struct NodeView<'a, E>
+where
+    E: Copy + Eq + Hash + Debug,
+{
+    pub span: &'a [E],
+    pub edges: HashMap<E, usize>,
+    pub terminators: Vec<usize>,
+}
+
 impl<E, I, const N: usize> From<[I; N]> for GeneralizedSuffixTree<E>
 where
     I: IntoIterator<Item = E>,
@@ -105,6 +114,57 @@ where
             links: HashMap::from([(1, 0)]),
             ..Default::default()
         }
+    }
+
+    pub fn get_node(&self, id: usize) -> Option<NodeView<E>> {
+        if id < 1 || id > self.nodes.len() {
+            return None; // boundary checks
+        }
+        let node = self.node(id);
+        if node.start > self.elems[node.source].len() {
+            return None; // don't return terminator nodes
+        }
+        let span = &self.elems[node.source][node.start..=node.end.min(self.end(node.source) - 1)];
+        let edges = self
+            .edges
+            .get(&id)
+            .map(|edges| {
+                let mut elem_edges = HashMap::new();
+                for (&token, &child) in edges {
+                    match token {
+                        Token::Element(elem) => {
+                            elem_edges.insert(elem, child);
+                        }
+                        _ => (),
+                    }
+                }
+                elem_edges
+            })
+            .unwrap_or_else(HashMap::new);
+        let mut terminators = self
+            .edges
+            .get(&id)
+            .map(|edges| {
+                let mut terminators = Vec::new();
+                for (&token, _) in edges {
+                    match token {
+                        Token::Terminator(source) => terminators.push(source),
+                        _ => {}
+                    }
+                }
+                terminators
+            })
+            .unwrap_or_else(Vec::new);
+
+        if node.end >= self.elems[node.source].len() {
+            terminators.push(node.source); // leaf node terminators are implicit
+        }
+
+        Some(NodeView {
+            span,
+            edges,
+            terminators,
+        })
     }
 
     fn new_node(&mut self, source: usize, start: usize, end: usize) -> usize {
@@ -433,6 +493,7 @@ where
 mod tests {
 
     use super::*;
+
     #[test]
     fn test_contains_abab() {
         let result = GeneralizedSuffixTree::from(["abab".to_owned().chars()]);

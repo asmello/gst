@@ -116,6 +116,10 @@ where
         }
     }
 
+    pub fn root(&self) -> usize {
+        ROOT
+    }
+
     pub fn get_node(&self, id: usize) -> Option<NodeView<E>> {
         if id < 1 || id > self.nodes.len() {
             return None; // boundary checks

@@ -120,6 +120,10 @@ where
         ROOT
     }
 
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
     pub fn get_node(&self, id: usize) -> Option<NodeView<E>> {
         if id < 1 || id > self.nodes.len() {
             return None; // boundary checks
